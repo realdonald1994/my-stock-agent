@@ -26,67 +26,48 @@ def get_stock_news(symbol):
         return []
 
 def generate_analysis(stock, news_data):
-    """Generates analysis with strict length constraints."""
     raw_text = "\n".join([f"- {n['title']}: {n['summary']}" for n in news_data])
+    prompt = f"Analyze news for {stock}: {raw_text}. Focus on breakouts and earnings. Keep it under 1000 chars."
     
-    # Strict prompt to prevent the "message too long" error
-    prompt = f"""
-    Analyze news for {stock}: {raw_text}.
-    Format:
-    1. 📢 **Top News**: 1-sentence summary.
-    2. ⚡ **Technical Signal**: Breakout/Breakdown risks & levels.
-    3. 🎯 **Sentiment**: 1-10.
+    # List of models to try in order of preference
+    # 'gemini-3-flash-preview' is the newest for 2026.
+    # 'gemini-1.5-flash' is the hyper-stable legacy fallback.
+    models_to_try = ["gemini-3-flash-preview", "gemini-1.5-flash"]
     
-    Keep the total response under 1000 characters.
-    """
-    
-    try:
-        # Using the standard flash model for reliability
-        response = client.models.generate_content(
-            model="gemini-3-flash", 
-            contents=prompt
-        )
-        return response.text
-    except Exception as e:
-        print(f"❌ AI Error for {stock}: {e}")
-        return None
+    for model_id in models_to_try:
+        try:
+            print(f"🤖 Attempting analysis with {model_id}...")
+            response = client.models.generate_content(model=model_id, contents=prompt)
+            return response.text
+        except Exception as e:
+            print(f"⚠️ {model_id} failed: {e}")
+            time.sleep(2) # Short pause before fallback
+            continue
+    return None
 
 def send_to_telegram(text):
-    """Sends message. Retries as plain text if Markdown fails."""
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    
-    # Try Markdown first
     res = requests.post(url, data={
         "chat_id": TELEGRAM_CHAT_ID, 
         "text": text, 
         "parse_mode": "Markdown"
     })
-    
     # If Markdown fails (status 400), retry as Plain Text
     if res.status_code != 200:
-        print(f"📡 Markdown failed for a message, retrying as Plain Text...")
-        requests.post(url, data={
-            "chat_id": TELEGRAM_CHAT_ID, 
-            "text": text
-        })
+        requests.post(url, data={"chat_id": TELEGRAM_CHAT_ID, "text": text})
 
 def analyze_and_post():
     print("🚀 Starting Stock Agent...")
-    
     for stock in STOCKS:
         print(f"🔍 Processing {stock}...")
         news = get_stock_news(stock)
-        
-        if not news:
-            continue
+        if not news: continue
             
         analysis = generate_analysis(stock, news)
-        
         if analysis:
             report = f"📦 **{stock} AI Analysis**\n\n{analysis}"
             send_to_telegram(report)
             print(f"✅ {stock} sent to Telegram.")
-            # Small pause to avoid Telegram rate limits
             time.sleep(1) 
 
 if __name__ == "__main__":
