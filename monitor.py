@@ -25,60 +25,69 @@ def get_stock_news(symbol):
         print(f"❌ News fetch failed for {symbol}: {e}")
         return []
 
-def generate_with_retry(prompt, model_name="gemini-3-flash-preview", retries=3):
-    for i in range(retries):
-        try:
-            response = client.models.generate_content(model=model_name, contents=prompt)
-            return response.text
-        except Exception as e:
-            if "503" in str(e):
-                print(f"🔄 AI busy (Attempt {i+1}). Waiting 15s...")
-                time.sleep(15)
-            else:
-                print(f"❌ AI Error: {e}")
-                break
-    return None
-
-def send_telegram_message(message, use_markdown=True):
-    """Helper to send message and print result."""
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message}
-    if use_markdown:
-        payload["parse_mode"] = "Markdown"
+def generate_analysis(stock, news_data):
+    """Generates analysis with strict length constraints."""
+    raw_text = "\n".join([f"- {n['title']}: {n['summary']}" for n in news_data])
     
-    res = requests.post(url, data=payload)
-    print(f"📡 Telegram Status: {res.status_code}")
+    # Strict prompt to prevent the "message too long" error
+    prompt = f"""
+    Analyze news for {stock}: {raw_text}.
+    Format:
+    1. 📢 **Top News**: 1-sentence summary.
+    2. ⚡ **Technical Signal**: Breakout/Breakdown risks & levels.
+    3. 🎯 **Sentiment**: 1-10.
+    
+    Keep the total response under 1000 characters.
+    """
+    
+    try:
+        # Using the standard flash model for reliability
+        response = client.models.generate_content(
+            model="gemini-3-flash", 
+            contents=prompt
+        )
+        return response.text
+    except Exception as e:
+        print(f"❌ AI Error for {stock}: {e}")
+        return None
+
+def send_to_telegram(text):
+    """Sends message. Retries as plain text if Markdown fails."""
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    
+    # Try Markdown first
+    res = requests.post(url, data={
+        "chat_id": TELEGRAM_CHAT_ID, 
+        "text": text, 
+        "parse_mode": "Markdown"
+    })
+    
+    # If Markdown fails (status 400), retry as Plain Text
     if res.status_code != 200:
-        print(f"❌ Telegram Error Details: {res.text}")
-    return res.status_code == 200
+        print(f"📡 Markdown failed for a message, retrying as Plain Text...")
+        requests.post(url, data={
+            "chat_id": TELEGRAM_CHAT_ID, 
+            "text": text
+        })
 
 def analyze_and_post():
-    # --- SANITY TEST ---
-    print("🧪 Sending Test Message...")
-    send_telegram_message("🤖 Stock Agent is online and checking the markets!")
-
-    header = "🚀 **Daily AI Market Watch**\n\n"
-    final_report = header
+    print("🚀 Starting Stock Agent...")
     
     for stock in STOCKS:
         print(f"🔍 Processing {stock}...")
-        news_data = get_stock_news(stock)
-        if not news_data: continue
-            
-        raw_text = "\n".join([f"- {n['title']}: {n['summary']}" for n in news_data])
-        prompt = f"Analyze news for {stock}: {raw_text}. Focus on breakouts and earnings. Keep it brief."
+        news = get_stock_news(stock)
         
-        analysis = generate_with_retry(prompt)
+        if not news:
+            continue
+            
+        analysis = generate_analysis(stock, news)
+        
         if analysis:
-            final_report += f"**{stock} Analysis:**\n{analysis}\n\n---\n\n"
-    
-    # --- SEND ACTUAL REPORT ---
-    if final_report != header:
-        print("📤 Sending Full Report...")
-        # If Markdown fails, we try sending as plain text
-        if not send_telegram_message(final_report, use_markdown=True):
-            print("🔄 Markdown failed. Retrying as Plain Text...")
-            send_telegram_message(final_report, use_markdown=False)
+            report = f"📦 **{stock} AI Analysis**\n\n{analysis}"
+            send_to_telegram(report)
+            print(f"✅ {stock} sent to Telegram.")
+            # Small pause to avoid Telegram rate limits
+            time.sleep(1) 
 
 if __name__ == "__main__":
     analyze_and_post()
