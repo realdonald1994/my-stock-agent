@@ -23,9 +23,12 @@ def get_today_news(symbol):
     try:
         r = requests.get(url)
         data = r.json()
-        if "Note" in data: return []
+        # Detect API Limit
+        if "Note" in data: 
+            return "API_LIMIT"
         return data.get('feed', [])[:5]
-    except:
+    except Exception as e:
+        print(f"❌ Network Error for {symbol}: {e}")
         return []
 
 def generate_analysis(stock, news_data):
@@ -47,35 +50,41 @@ def generate_analysis(stock, news_data):
 def send_to_telegram(text):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     res = requests.post(url, data={"chat_id": TELEGRAM_CHAT_ID, "text": text, "parse_mode": "Markdown"})
-    if res.status_code != 200:
-        requests.post(url, data={"chat_id": TELEGRAM_CHAT_ID, "text": text})
+    return res.status_code == 200
 
 def analyze_and_post():
     # Convert UTC to EST/EDT (Approx UTC-4)
     est_now = datetime.utcnow() - timedelta(hours=4)
     est_hour = est_now.hour
-    est_minute = est_now.minute
     
-    print(f"🕒 Current EST Time: {est_hour}:{est_minute}")
+    print(f"🕒 Current EST Time: {est_hour}:{est_now.minute}")
 
-    # Logic adjusted for EST Market Hours:
-    # Full List at Market Open (9:30 AM) and Market Close (4:30 PM)
     if (est_hour == 9) or (est_hour == 16):
         stocks_to_check = PRIORITY_STOCKS + STANDARD_STOCKS
         print(f"🚀 Running FULL LIST for EST Market Activity")
     else:
         stocks_to_check = PRIORITY_STOCKS
-        print(f"🚀 Running PRIORITY ONLY for frequent monitoring")
+        print(f"🚀 Running PRIORITY ONLY")
 
     for stock in stocks_to_check:
+        print(f"🔍 Checking {stock}...") # This will now show in your logs
         news = get_today_news(stock)
+        
+        if news == "API_LIMIT":
+            warning = "⚠️ **Alpha Vantage API Limit Reached**\n\nDaily 25-request limit exhausted. Monitoring paused until tomorrow's reset."
+            send_to_telegram(warning)
+            print("🛑 STOPPING: API Limit Reached.")
+            return # Exit the entire script
+
         if not news:
+            print(f"   No fresh news for {stock}.")
             continue
             
         analysis = generate_analysis(stock, news)
         if analysis:
             report = f"📦 **{stock} 今日动态深度解析 (EST)**\n\n{analysis}"
             send_to_telegram(report)
+            print(f"   ✅ Report sent for {stock}.")
             time.sleep(2)
 
 if __name__ == "__main__":
