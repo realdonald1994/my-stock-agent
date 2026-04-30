@@ -1,24 +1,36 @@
-name: Run Tiered Stock Agent (EST)
+name: Run Tiered Stock Agent (EST Optimized)
 on:
   schedule:
-    # 9:30 AM, 1:00 PM, 4:30 PM, 9:00 PM (EST/EDT)
-    - cron: '30 13,20 * * *' # Full List runs
-    - cron: '0 17,1 * * *'   # Priority Only runs
+    # Converting EST/EDT to UTC (UTC-4)
+    # Full List: 9:34 AM and 4:34 PM EST (Offset to avoid congestion)
+    - cron: '34 13,20 * * *'
+    
+    # Priority Only: 1:12 PM and 9:12 PM EST (Offset to avoid peak hour)
+    - cron: '12 17,1 * * *'
+  
+  # Keep this so you can always trigger it manually for earnings news
   workflow_dispatch:
 
 jobs:
   run-monitor:
     runs-on: ubuntu-latest
     env:
+      # Ensures we use the modern 2026 Node engine for all actions
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - name: Checkout Repository
+        uses: actions/checkout@v6
+        
+      - name: Setup Python
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
+          
       - name: Install dependencies
         run: pip install requests google-genai
-      - name: Run Script
+        
+      - name: Execute Agent
         env:
           ALPHA_VANTAGE_KEY: ${{ secrets.ALPHA_VANTAGE_KEY }}
           GEMINI_KEY: ${{ secrets.GEMINI_KEY }}
