@@ -1,8 +1,9 @@
-name: Run Tiered Stock Agent
+name: Run Tiered Stock Agent (EST)
 on:
   schedule:
-    # 09:00 (Priority), 13:00 (Full), 17:00 (Priority), 22:00 (Full) - All UTC
-    - cron: '0 9,13,17,22 * * *'
+    # 9:30 AM, 1:00 PM, 4:30 PM, 9:00 PM (EST/EDT)
+    - cron: '30 13,20 * * *' # Full List runs
+    - cron: '0 17,1 * * *'   # Priority Only runs
   workflow_dispatch:
 
 jobs:
