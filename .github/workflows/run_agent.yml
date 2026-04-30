@@ -1,21 +1,18 @@
 name: Run Tiered Stock Agent (EST Optimized)
 on:
   schedule:
-    # Converting EST/EDT to UTC (UTC-4)
-    # Full List: 9:34 AM and 4:34 PM EST (Offset to avoid congestion)
+    # Full List: 9:34 AM and 4:34 PM EST (Avoids top-of-hour rush)
     - cron: '34 13,20 * * *'
     
-    # Priority Only: 1:12 PM and 9:12 PM EST (Offset to avoid peak hour)
+    # Priority Only: 1:12 PM and 9:12 PM EST
     - cron: '12 17,1 * * *'
   
-  # Keep this so you can always trigger it manually for earnings news
-  workflow_dispatch:
+  workflow_dispatch: # Allows manual runs for earnings news
 
 jobs:
   run-monitor:
     runs-on: ubuntu-latest
     env:
-      # Ensures we use the modern 2026 Node engine for all actions
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
       
     steps:
